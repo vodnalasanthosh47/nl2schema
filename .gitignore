@@ -1,6 +1,7 @@
 # IDE
 .vscode/
 .env
+.venv
 
 # large datasets -> will be using dvc
 data/schemapile/raw/
