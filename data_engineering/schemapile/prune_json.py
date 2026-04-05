@@ -68,4 +68,4 @@ def sample_firstN_from_pruned_schemapile(N: int = 500):
     with open(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned-sample{N}.json", 'w') as f:
         f.write(json.dumps(sampled_schemapile, indent=4))
 
-# sample_firstN_from_pruned_schemapile(5)
+sample_firstN_from_pruned_schemapile(200)
