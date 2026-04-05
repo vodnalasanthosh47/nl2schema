@@ -1,0 +1,11 @@
+# IDE
+.vscode/
+.env
+
+# large datasets -> will be using dvc
+data/schemapile/raw/
+data/schemapile/processed/
+data/schemapile/generated/
+*.json.gz
+*.json
+*.csv
