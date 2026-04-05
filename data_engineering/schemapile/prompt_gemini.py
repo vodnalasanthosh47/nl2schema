@@ -5,10 +5,10 @@ import os
 from dotenv import load_dotenv
 
 
-PATH_TO_DATA_FOLDER = "../../data/"
+PATH_TO_DATA_FOLDER = "../../data/schemapile"
 
 # Load environment variables
-load_dotenv("../.env")
+load_dotenv("../../.env")
 
 def get_gemini_client():
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))

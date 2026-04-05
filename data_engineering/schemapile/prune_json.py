@@ -1,7 +1,7 @@
 import json
 
 
-PATH_TO_DATA_FOLDER = "../../data/"
+PATH_TO_DATA_FOLDER = "../../data/schemapile"
 
 def prune_schemapile():
     with open(f"{PATH_TO_DATA_FOLDER}/raw/schemapile-perm.json", 'r') as f:

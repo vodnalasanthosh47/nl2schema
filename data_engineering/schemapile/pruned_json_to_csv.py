@@ -2,7 +2,7 @@ import json
 import csv
 
 
-PATH_TO_DATA_FOLDER = "../../data/"
+PATH_TO_DATA_FOLDER = "../../data/schemapile"
 
 with open(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned.json", 'r') as f:
     schemapile = json.loads(f.read())
