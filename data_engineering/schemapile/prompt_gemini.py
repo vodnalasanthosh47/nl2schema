@@ -70,14 +70,20 @@ def get_json_from_file(file_path):
 def generate_dataset(schemas):
     dataset = []
     client = get_gemini_client()
-    for schema in tqdm(schemas):
+    i = 1
+    for schema in schemas:
         natural_language_description = get_natural_desc_of_schema(schema, client)
         dataset.append({
             "input": natural_language_description,
-            "output": json.dumps(schema['tables'], indent=2)
+            "output": json.dumps(schema['tables'], ensure_ascii=False) + '\n'
         })
         #  sleep for 4s
-        time.sleep(4)
+        print(f"Completed {i}/{len(schemas)}:")
+        print(natural_language_description)
+        print("\n\n")
+        i += 1
+        time.sleep(3)
+    return dataset
     
 
 
