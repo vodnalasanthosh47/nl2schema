@@ -14,6 +14,7 @@ import json
 import sys
 import argparse
 from pathlib import Path
+import pyperclip
 
 
 def build_mermaid_ddl(schema: dict) -> str:
@@ -21,8 +22,8 @@ def build_mermaid_ddl(schema: dict) -> str:
     tables = schema.get("tables", schema)  # Fallback: schema might just be the tables dict
     
     lines = []
-    lines.append(f"## Schema: {name}")
-    lines.append("```mermaid")
+    # lines.append(f"## Schema: {name}")
+    # lines.append("```mermaid")
     lines.append("erDiagram")
     
     relationships = []
@@ -76,7 +77,9 @@ def build_mermaid_ddl(schema: dict) -> str:
     for rel in sorted(list(set(relationships))):
         lines.append(rel)
         
-    lines.append("```\n")
+    # lines.append("```\n")
+    pyperclip.copy("\n".join(lines))
+    print("Copied to clipboard")
     return "\n".join(lines)
 
 
