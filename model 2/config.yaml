@@ -1,0 +1,48 @@
+# ============================================================
+# Schema → SQL Query Generation Model — Configuration
+# ============================================================
+
+model:
+  name: "Salesforce/codet5-base"
+  max_input_length: 1024               # Large enough for 6+ table schemas
+  max_output_length: 256
+
+data:
+  train_spider: "train_spider.json"
+  train_others: "train_others.json"
+  dev: "dev.json"
+  tables: "tables.json"
+  test_tables: "test_tables.json"
+  database_dir: "database"
+  test_database_dir: "test_database"
+  processed_dir: "processed_data"
+  schema_format: "ddl"
+  augment_ratio: 0.4                   # 40% of pairs get name-masked copies
+
+training:
+  output_dir: "schema2sql_model"
+  num_epochs: 5
+  batch_size: 8
+  eval_batch_size: 8
+  learning_rate: 5.0e-5                # Fine-tuning LR — not from-scratch
+  weight_decay: 0.01
+  warmup_ratio: 0.1                    # 10% of total steps
+  gradient_accumulation_steps: 2
+  logging_steps: 50
+  save_strategy: "epoch"
+  evaluation_strategy: "epoch"
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  early_stopping_patience: 3
+  seed: 42
+
+generation:
+  num_beams: 10
+  num_return_sequences: 5
+  diversity_penalty: 1.5               # Higher = more structural variety
+  num_beam_groups: 5
+  temperature: 0.8
+  top_k: 50
+  top_p: 0.95
+  no_repeat_ngram_size: 3
+  early_stopping: true
