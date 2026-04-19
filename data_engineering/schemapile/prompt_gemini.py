@@ -63,26 +63,31 @@ def get_natural_desc_of_schema(schema, client = get_gemini_client()):
     return response.text
 
 def get_json_from_file(file_path):
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r', encoding='utf-8') as f:
         return json.loads(f.read())
 
 
 def generate_dataset(schemas):
     dataset = []
+    failed = []
     client = get_gemini_client()
     i = 1
     for schema in schemas:
-        natural_language_description = get_natural_desc_of_schema(schema, client)
-        dataset.append({
-            "input": natural_language_description,
-            "output": json.dumps(schema['tables'], ensure_ascii=False) + '\n'
-        })
-        #  sleep for 4s
-        print(f"Completed {i}/{len(schemas)}:")
-        print(natural_language_description)
+        try:
+            natural_language_description = get_natural_desc_of_schema(schema, client)
+            dataset.append({
+                "input": natural_language_description,
+                "output": json.dumps(schema['tables'], ensure_ascii=False) + '\n'
+            })
+            print(f"Completed {i}/{len(schemas)}:")
+            print(natural_language_description)
+        except Exception as e:
+            print(f"Error processing schema {i}: {e}")
+            failed.append(i)
+        
         print("\n\n")
         i += 1
-        time.sleep(3)
+        time.sleep(5)  # Sleep for 5 seconds between requests to avoid hitting rate limits
     return dataset
     
 
@@ -95,8 +100,13 @@ def generate_dataset(schemas):
 # end_time = time.time()
 # print("Time taken: ", end_time - start_time)
 
-schemas = get_json_from_file(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned-sample200.json")["schemas"]
-dataset = generate_dataset(schemas)
+def main():
+    schemas = get_json_from_file(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned-sample201_to_700.json")["schemas"]
+    dataset = generate_dataset(schemas)
 
-with open(f"{PATH_TO_DATA_FOLDER}/generated/schemapile-pruned-sample200-with-nl.json", 'w') as f:
-    json.dump(dataset, f)
+    with open(f"{PATH_TO_DATA_FOLDER}/generated/schemapile-pruned-sample201_to_700-with-nl.json", 'w') as f:
+        json.dump(dataset, f)
+
+
+if __name__ == "__main__":
+    main()

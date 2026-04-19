@@ -58,14 +58,14 @@ def sample_firstN_from_pruned_schemapile(N: int = 500):
     with open(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned.json", 'r') as f:
         schemapile = json.loads(f.read())
     
-    if N > len(schemapile["schemas"]):
-        print(f"N is greater than the total number of schemas ({len(schemapile['schemas'])}). ")
-        return
+    # if N > len(schemapile["schemas"]):
+    #     print(f"N is greater than the total number of schemas ({len(schemapile['schemas'])}). ")
+    #     return
         
 
-    sampled_schemapile = {"schemas": schemapile["schemas"][:N]}
+    sampled_schemapile = {"schemas": schemapile["schemas"][201:201+N]} 
 
-    with open(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned-sample{N}.json", 'w') as f:
-        f.write(json.dumps(sampled_schemapile, indent=4))
+    with open(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned-sample201_to_{201+N-1}.json", 'w') as f:
+        f.write(json.dumps(sampled_schemapile))
 
-sample_firstN_from_pruned_schemapile(200)
+sample_firstN_from_pruned_schemapile()
