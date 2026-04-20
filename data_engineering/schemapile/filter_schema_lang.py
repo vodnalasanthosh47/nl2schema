@@ -21,7 +21,7 @@ def filter_schemas_by_language(schemas, language="en"):
                 identifiers.append(column_name)
         
         # Join into one string — gives fasttext much more context
-        text = ' '.join(identifiers).replace('_', ' ').replace("id", "").replace("dept", "department").replace("addr", "address").replace("loc", "location").replace("desc", "description").replace("info", "information").replace("num", "number").replace("amt", "amount").replace("qty", "quantity").replace("emp", "employee").replace("cust", "customer").replace("prod", "product")
+        text = ' '.join(identifiers).replace('_', ' ').replace(" dept ", " department ").replace(" addr ", " address ").replace(" loc ", " location ").replace(" desc ", " description ").replace(" num ", " number ").replace(" amt ", " amount ").replace(" qty ", " quantity ").replace(" emp  ", " employee ").replace(" cust ", " customer ").replace(" prod ", " product ")
         
         try:
             detected_language = detect(text)
@@ -39,12 +39,12 @@ def filter_schemas_by_language(schemas, language="en"):
 
 
 def main():
-    schemapile = get_json_from_file(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned-sample200.json")
+    schemapile = get_json_from_file(f"{PATH_TO_DATA_FOLDER}/processed/schemapile-pruned-sample201_to_700.json")
     schemas = schemapile["schemas"]
     filtered_schema_indices, failed_schema_indices = filter_schemas_by_language(schemas, language="en")
     
     print(f"Schemas with descriptions in English: \n{filtered_schema_indices}")
-    print(f"Schemas that failed the language check: \n{failed_schema_indices}")
+    print(f"Schemas that failed the language check {len(failed_schema_indices)}: \n{failed_schema_indices}")
 
 
 if __name__ == "__main__":
