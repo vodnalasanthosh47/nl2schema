@@ -407,8 +407,8 @@ def build_column_def(col_name: str, col: dict) -> str:
     return " ".join(parts)
 
 
-def build_table_ddl(table_name: str, table: dict) -> str:
-    """Return a complete CREATE TABLE … ; statement."""
+def build_table_ddl(table_name: str, table: dict) -> (str, str):
+    """Return a CREATE TABLE … ; statement and a ALTER TABLE … ADD FOREIGN KEY statement for the given table definition."""
     col_defs: list[str] = []
 
     columns    = table.get("COLUMNS", {})
@@ -429,12 +429,13 @@ def build_table_ddl(table_name: str, table: dict) -> str:
         col_defs.append(f"    PRIMARY KEY ({pk_str})")
 
     # ---- FOREIGN KEYS ------------------------------------------------------
+    foreign_key_command: list[str] = []
     for fk in fk_list:
         fk_cols   = ", ".join(f"{c}" for c in fk["COLUMNS"])
         ref_table = fk["FOREIGN_TABLE"].split(".")[-1]   # strip schema prefix
         ref_cols  = ", ".join(f"{c}" for c in fk["REFERRED_COLUMNS"])
 
-        fk_line = f"    FOREIGN KEY ({fk_cols}) REFERENCES {ref_table} ({ref_cols})"
+        fk_line = f"ALTER TABLE {clean_table_name} ADD FOREIGN KEY ({fk_cols}) REFERENCES {ref_table} ({ref_cols})"
 
         on_delete = sql_action(fk.get("ON_DELETE"))
         on_update = sql_action(fk.get("ON_UPDATE"))
@@ -443,7 +444,7 @@ def build_table_ddl(table_name: str, table: dict) -> str:
         if on_update:
             fk_line += f" ON UPDATE {on_update}"
 
-        col_defs.append(fk_line)
+        foreign_key_command.append(fk_line + ";")
 
     # ---- CHECK constraints -------------------------------------------------
     for check in tbl_checks:
@@ -451,31 +452,23 @@ def build_table_ddl(table_name: str, table: dict) -> str:
 
     # ---- assemble ----------------------------------------------------------
     body = ",\n".join(col_defs)
-    return f"CREATE TABLE {clean_table_name} (\n{body}\n);"
+    create_table_stmt = f"CREATE TABLE {clean_table_name} (\n{body}\n);"
+    return create_table_stmt, "\n".join(foreign_key_command)
 
 
 def build_schema_ddl(schema: dict) -> str:
     """Return the full DDL block for one schema entry."""
-    name     = schema.get("name", "unnamed")
-    url      = schema.get("url", "").strip()
-    license_ = schema.get("license", "")
     tables   = schema.get("tables", {})
 
-    header_lines = [
-        "-- " + "-" * 72,
-        f"-- Schema : {name}",
-    ]
-    if url:
-        header_lines.append(f"-- Source  : {url}")
-    if license_:
-        header_lines.append(f"-- License : {license_}")
-    header_lines.append("-- " + "-" * 72)
-
     table_blocks: list[str] = []
+    foreign_key_blocks: list[str] = []
     for table_name, table_def in tables.items():
-        table_blocks.append(build_table_ddl(table_name, table_def))
+        create_table_stmt, foreign_key_stmt = build_table_ddl(table_name, table_def)
+        table_blocks.append(create_table_stmt)
+        if foreign_key_stmt:
+            foreign_key_blocks.append(foreign_key_stmt)
 
-    return "\n".join(header_lines) + "\n\n" + "\n\n".join(table_blocks)
+    return "\n\n".join(table_blocks) + "\n\n" + "\n".join(foreign_key_blocks)
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +492,8 @@ def convert(input_path: str, output_path: str | None = None) -> None:
     ]
 
     for schema in schemas:
+        blocks.append("-- " + "-" * 72)
+        blocks.append(f"-- Schema: {schema.get('name', 'unnamed')}")
         blocks.append(build_schema_ddl(schema))
         blocks.append("")
 
@@ -509,6 +504,11 @@ def convert(input_path: str, output_path: str | None = None) -> None:
         print(f"Written to {output_path}")
     else:
         print(sql_output)
+
+
+def convert_json_to_sql_ddl(json_schema) -> str:
+    """Convenience function to convert a SchemaPile JSON schema dict to SQL DDL string."""
+    return build_schema_ddl(json_schema)
 
 
 if __name__ == "__main__":
