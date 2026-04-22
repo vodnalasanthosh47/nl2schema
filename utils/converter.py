@@ -332,10 +332,10 @@ TYPE_MAP: dict[str, str] = {
 # Domains/custom types that look like application-level enums.
 # These appear as column types in some schemas (e.g. "job_status", "gender_type").
 # We map them all to VARCHAR(64) as a safe fallback.
-ENUM_LIKE_SUFFIXES = (
-    "_status", "_type", "_state", "_role", "_enum", "_kind",
-    "_mode", "_action", "_level", "_format", "_scope",
-)
+# ENUM_LIKE_SUFFIXES = (
+#     "_status", "_type", "_state", "_role", "_enum", "_kind",
+#     "_mode", "_action", "_level", "_format", "_scope",
+# )
 
 
 def sql_type(abstract_type: str) -> str:
@@ -346,17 +346,17 @@ def sql_type(abstract_type: str) -> str:
         return mapped
 
     # Types that already contain size info e.g. "VARCHAR(150)", "CHAR(6)"
-    upper = abstract_type.upper()
-    if upper.startswith(("VARCHAR(", "CHAR(", "NVARCHAR(")):
-        return abstract_type.upper().replace("NVARCHAR", "VARCHAR")
+    # upper = abstract_type.upper()
+    # if upper.startswith(("VARCHAR(", "CHAR(", "NVARCHAR(")):
+    #     return abstract_type.upper().replace("NVARCHAR", "VARCHAR")
 
     # Application-level enum-like types → VARCHAR(64)
-    lower = abstract_type.lower()
-    if any(lower.endswith(s) for s in ENUM_LIKE_SUFFIXES):
-        return f"VARCHAR(64) /* was: {abstract_type} */"
+    # lower = abstract_type.lower()
+    # if any(lower.endswith(s) for s in ENUM_LIKE_SUFFIXES):
+    #     return f"VARCHAR(64) /* was: {abstract_type} */"
 
-    # Anything still unknown → VARCHAR(255) with a comment so it's visible
-    return f"VARCHAR(255) /* unknown type: {abstract_type} */"
+    # Anything still unknown → None
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +375,7 @@ ACTION_MAP: dict[str, str] = {
 def sql_action(action: str | None) -> str | None:
     if action is None:
         return None
-    return ACTION_MAP.get(action, action.upper())
+    return ACTION_MAP.get(action, None)
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +385,8 @@ def sql_action(action: str | None) -> str | None:
 def build_column_def(col_name: str, col: dict) -> str:
     """Return the column definition line (without trailing comma)."""
     # Backtick-quote column names to handle reserved words and special chars
+    if sql_type(col["TYPE"]) is None:
+        return None
     parts = [f"    {col_name}", sql_type(col["TYPE"])]
 
     if col.get("NULLABLE") is False:
@@ -421,7 +423,10 @@ def build_table_ddl(table_name: str, table: dict) -> (str, str):
 
     # ---- column definitions ------------------------------------------------
     for col_name, col in columns.items():
-        col_defs.append(build_column_def(col_name, col))
+        col_def = build_column_def(col_name, col)
+        if col_def is None:
+            return None, None
+        col_defs.append(col_def)
 
     # ---- PRIMARY KEY -------------------------------------------------------
     if pk_cols:
@@ -456,19 +461,28 @@ def build_table_ddl(table_name: str, table: dict) -> (str, str):
     return create_table_stmt, "\n".join(foreign_key_command)
 
 
-def build_schema_ddl(schema: dict) -> str:
-    """Return the full DDL block for one schema entry."""
-    tables   = schema.get("tables", {})
-
+def build_schema_ddl_from_tables(tables: dict[str, dict]) -> str:
+    """Return the full DDL block for a schema given its 'tables' dict."""
     table_blocks: list[str] = []
     foreign_key_blocks: list[str] = []
     for table_name, table_def in tables.items():
         create_table_stmt, foreign_key_stmt = build_table_ddl(table_name, table_def)
+        if create_table_stmt is None:
+            return None
         table_blocks.append(create_table_stmt)
         if foreign_key_stmt:
             foreign_key_blocks.append(foreign_key_stmt)
 
     return "\n\n".join(table_blocks) + "\n\n" + "\n".join(foreign_key_blocks)
+
+
+def build_schema_ddl(schema: dict) -> str:
+    """Return the full DDL block for one schema entry."""
+    tables   = schema.get("tables")
+    if tables is None:
+        return None
+
+    return build_schema_ddl_from_tables(tables)
 
 
 # ---------------------------------------------------------------------------
@@ -506,8 +520,8 @@ def convert(input_path: str, output_path: str | None = None) -> None:
         print(sql_output)
 
 
-def convert_json_to_sql_ddl(json_schema) -> str:
-    """Convenience function to convert a SchemaPile JSON schema dict to SQL DDL string."""
+def convert_json_to_sql_ddl(json_schema) -> str | None:
+    """Convenience function to convert a SchemaPile JSON schema dict to SQL DDL string. If any error occurs during conversion (e.g. unknown type), returns None."""
     return build_schema_ddl(json_schema)
 
 
