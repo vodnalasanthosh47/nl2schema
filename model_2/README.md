@@ -1,129 +1,108 @@
-# 🧠 Pipeline Architecture: Unconditional Schema-to-SQL Generation
+# 🧠 Pipeline Architecture: Unconditional Schema-to-SQL Generation (Qwen2.5-Coder)
 
 Welcome to the cutting-edge of automated database engineering. Most NLP models treat SQL generation as a simple translation task: *Language in ➔ SQL out*.
 
-This repository **re-frames the problem.** We built an **Unconditional SQL Synthesis Engine**. Given absolutely nothing but the structural blueprints of a database (the `CREATE TABLE` schemas), this model autonomously hallucinates batches of diverse, perfectly executable SQL queries.
+This repository **re-frames the problem.** We built an **Unconditional SQL Synthesis Engine**. Given absolutely nothing but the structural blueprints of a database (the `CREATE TABLE` schemas), this model autonomously hallucinates batches of diverse, perfectly executable SQL queries. 
 
-It doesn’t translate. It *invents*.
+In Part 2 of this pipeline, we migrated our architecture entirely to causal LLMs, leveraging the deep reasoning capabilities of **Qwen2.5-Coder-1.5B**. 
 
----
-
-## 🏗️ High-Level System Architecture
-
-How do you teach a machine to dream in SQL? You rip out its English constraints, feed it raw database scaffolding, and rigorously score it in an ephemeral sandbox.
-
-```mermaid
-graph TD
-    A[Spider JSON Database] -->|Discard NL Questions| B(Extraction Engine)
-    B --> C{Name-Masking Augmentation}
-    C -->|40% Obfuscated| D[Tokenizer Truncation]
-    C -->|60% Standard| D
-    D --> E((Causal / Seq2Seq Synthesizer))
-    
-    E -->|Tokens| F[Autoregressive Decoder]
-    F -->|Generated SQL Query| G[SQLite Ephemeral Sandbox]
-    
-    H[(In-Memory Database)] -. Schema Injection .-> G
-    G -->|Execution Trial| I{Compilation Status}
-    
-    I -->|DatabaseError| J[❌ Invalid]
-    I -->|Successful Return| K[✅ Valid Query]
-```
+Below is an exhaustive, technical breakdown of the pipeline's preprocessing, token mapping, single-epoch training dynamics, and execution-validation protocol.
 
 ---
 
 ## 1. Data Hijacking & Preprocessing (`preprocess.py`)
 
-The original [Spider Dataset](https://yale-lily.github.io/spider) is massive but deeply coupled to Natural Language questions. To create an unconditional generator, we had to "hijack" the dataset. 
+The original [Spider Dataset](https://yale-lily.github.io/spider) is massive but deeply coupled to Natural Language (NL) questions. To create an unconditional generator, we fundamentally "hijacked" the dataset, discarding all NL constraints. 
 
-Instead of teaching the model to map English nouns to SQL tables, we fundamentally force it to map **topological edges** (`FOREIGN KEY`, `PRIMARY KEY`) into Relational Algebra (`JOIN`, `GROUP BY`).
+Instead of teaching the model to map English nouns to SQL tables, we force it to mathematically map **topological edges** (`FOREIGN KEY`, `PRIMARY KEY`) directly into Relational Algebra (`JOIN`, `GROUP BY`).
 
-### The Regularization Problem (Name-Masking)
+### The Regularization Problem (Name-Masking Augmentation)
 
-Pre-trained Language Models (PLMs) are notoriously lazy. If they see a table named `employees` and a table named `salaries`, they will guess how to `JOIN` them based on pre-trained English context rather than reading the explicit `REFERENCES` syntax in your schema.
+Pre-trained Language Models (PLMs) are notoriously lazy. If they see a table named `employees` and a table named `salaries`, they will guess how to `JOIN` them based on pre-trained English semantic context rather than reading the explicit `REFERENCES` syntax in the schema definition.
 
 **Our Solution: 40% Name-Masking Ablation.**
-We randomly select 40% of our training batches and programmatically obliterate all English semantics before passing them to the model.
+We randomly select 40% of our training batches and programmatically obliterate all English semantics before they enter the tokenizer.
+*   **The Algorithm:** We programmatically map realistic table names (`employees`) to `table_0`, `table_1`, etc., and column names to `col_0`, `col_1`. 
+*   **Length-Descending Safeguard:** We sort the string replacement map by descending length. This is a critical engineering safeguard to prevent catastrophic partial-match bugs (e.g., replacing "id" inside "hidden_id" and breaking the string).
+*   **Mathematical Impact:** The model is no longer allowed to cheat by knowing what an "employee" is. It is forced to mathematically trace `col_0` through the database to figure out valid query syntax. This vastly improves its zero-shot performance on unseen enterprise schemas.
 
-```diff
-- CREATE TABLE departmental_head (head_id PRIMARY KEY, name text)
-+ CREATE TABLE table_0 (col_0 PRIMARY KEY, col_1 text)
+### Token-Aware Table-Boundary Truncation
+
+Transformers have rigid maximum memory limits.
+*   **The Naïve Approach:** Chop the string at a fixed max length. This violently slices `CREATE TABLE` blocks in half, inherently corrupting the Abstract Syntax Tree (AST) grammar that the model needs to learn.
+*   **Our Approach:** We deploy an iterative **Table-Boundary Truncation algorithm**. It measures token lengths using the actual HuggingFace tokenizer `.encode()`, tracking cumulative length. If appending the next `CREATE TABLE` block breaches the token budget (leaving exact headroom for the prompt overhead), the script halts and outputs the finalized schema subset. The model guarantees it only ever trains on syntactically pristine data.
+
+---
+
+## 2. Input/Output Pair Construction (`dataset.py` & `train_qwen.py`)
+
+To instruct the Causal LLM to act as an unconditional query synthesizer, we rigorously construct the training matrices:
+
+1.  **The Input Schema Prompt:** Every single query pair begins with the exact prefix: `Generate a SQL query for this database:\n{schema_text}`
+2.  **The Structural Separator:** Between the schema definition and the target SQL output, we inject a rigid separator: `\n-- SQL QUERY --\n`.
+3.  **The Autoregressive Assembly:** The full sequence is assembled as: `prompt_ids` + `separator_ids` + `output_ids` + `eos_token_id`.
+
+### The Optimization Key: Causal Loss Masking
+
+When fine-tuning a causal language model, standard next-token-prediction computes the gradient loss over the *entire* text sequence. If we did this, the model would waste massive parameter capacity learning how to recite `CREATE TABLE` schemas.
+
+Instead, we initialize our sequence `labels` array with the `-100` ignore index for the exact length of the prompt and separator:
+```python
+labels = [-100] * len(prompt_ids) + output_ids
 ```
-
-**Why is this brilliant?** The model isn't allowed to cheat by knowing what an "employee" is. It is forced to mathematically trace `col_0` through the database to figure out valid query syntax. This vastly improves its zero-shot performance on entirely unseen database concepts.
-
-### Token-Aware Truncation
-Transformers have rigid memory limits. Many enterprise databases far exceed token limits.
-*   **The Naïve Way:** Chop the string at a fixed character length. This violently slices `CREATE TABLE` blocks in half, corrupting the Abstract Syntax Tree (AST).
-*   **Our Way:** We deploy an iterative **Table-Boundary Truncation algorithm**. We use the actual Huggingface model tokenizer to count subsets of schemas, appending whole tables until we are just under the budget. Only pristine, contiguous schema chunks are fed to the model.
+**Result:** Backpropagation gradients are calculated **exclusively** on the hallucinated SQL tokens. The model treats the schema DDL as static contextual conditioning and learns strictly how to synthesize complex Relational Algebra from it.
 
 ---
 
-## 2. Model Architecture & Training 
+## 3. Model Architecture & LoRA Training (`train_qwen.py`)
 
-We progressed our architecture from Seq2Seq (CodeT5) to state-of-the-art Causal LLMs (**Qwen2.5-Coder-1.5B**).
+To achieve state-of-the-art structural generation, we selected **`Qwen/Qwen2.5-Coder-1.5B`**. This model possesses profound reasoning over code blocks and variable tracking across massive contexts.
 
-### Legacy: CodeT5 Synthesizer (`train.py`)
-Initially, we used **`Salesforce/codet5-base`** (220M parameters), pre-trained on Identifier-Aware Denoising. We optimized it using a learning rate of `5e-5` to avoid Catastrophic Forgetting, with an effective batch size of 16 (Gradient Accumulation = 2, Batch Size = 8).
+### The Training Execution: 1 Epoch
 
-### Current State-of-the-Art: Qwen2.5-Coder (`train_qwen.py`)
-To dramatically enhance the structural coherence and complexity of generated SQL, we migrated to **`Qwen/Qwen2.5-Coder-1.5B`**. This model possesses profound reasoning over code blocks and deep context tracking.
+We executed the training pipeline for **exactly 1 Epoch**. 
+*   **Why only 1 Epoch?** PLMs applied to highly constrained, synthetic datasets (like abstracted topological SQL trees) overfit incredibly fast. Fine-tuning for multiple epochs immediately triggers Catastrophic Forgetting, completely shattering the massive geometric representation of code syntax the model spent millions of computation hours building. One epoch acts as the optimal domain adaptation layer.
 
-**Qwen Training Details:**
-*   **Task Formulation (Causal Masking):** We treat schema-to-SQL as a causal language modeling task. The input schema prompt is separated from the target SQL via `\n-- SQL QUERY --\n`. Crucially, we apply **Loss Masking** (`-100`) to the prompt tokens, meaning backpropagation only penalizes the model for the generated SQL query, preventing it from wasting capacity on reciting the schema.
-*   **LoRA Fine-Tuning:** Full-parameter fine-tuning of a 1.5B model is computationally intractable. We utilized **Parameter-Efficient Fine-Tuning (PEFT)** via LoRA:
-    *   **Rank (r):** `16`
-    *   **Alpha:** `32`
-    *   **Target Modules:** Comprehensive injection across all attention and MLP projections (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`).
-*   **Hyperparameters:** 
-    *   **Epochs:** `3` (Early stopping or low epochs prevent overfitting on the synthetic structure).
-    *   **Learning Rate:** `1e-4` using `adamw_torch` optimizer and Cosine LR Scheduler with a `0.03` Warmup Ratio.
-    *   **Batching & Accumulation:** Executed with `Batch Size = 1` and `Gradient Accumulation = 8` to simulate larger batch dynamics on memory-constrained GPUs.
-    *   **Precision:** Mixed precision training (`bf16` or `fp16`) with Gradient Checkpointing enabled.
+### Parameter-Efficient Fine-Tuning (PEFT)
+Full-parameter fine-tuning of a 1.5 Billion parameter model is computationally intractable on consumer hardware. We utilized **LoRA (Low-Rank Adaptation)**:
+*   **Rank (r):** `16`
+*   **Alpha:** `32`
+*   **Dropout:** `0.05`
+*   **Target Modules:** We injected LoRA adapters comprehensively across *all* dense projection layers in the attention and MLP manifolds (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`).
+
+### Hyperparameters & System Constraints
+*   **Optimizer:** `adamw_torch` mapped with a Cosine Learning Rate Scheduler.
+*   **Learning Rate:** `1e-4` with a Warmup Ratio of `0.03` to protect pre-trained weights from errant, aggressive gradient updates on step 1.
+*   **Batch Physics:** We use `Batch Size = 1` combined with `Gradient Accumulation Steps = 8` to simulate an effective batch size of 8, allowing continuous smooth gradient descent on memory-constrained GPUs without triggering Out-Of-Memory (OOM) halts.
+*   **Collator Padding:** We deployed a custom `CompletionCollator` that pads dynamically to the longest sequence in the micro-batch, enforcing the `-100` ignore index on all padding tokens dynamically.
 
 ---
 
-## 3. Evaluation: The Virtual Sandbox (`evaluate_qwen.py`)
+## 4. Evaluation: The Virtual Sandbox (`evaluate_qwen.py`)
 
 In traditional NLP, a model is scored using **Exact Match**. If it guesses exactly what the human wrote, it gets a point.
 
-**The Paradigm Shift:** Since our model is unconditionally dreaming up queries out of thin air, there is no "ground truth" to compare against. The model might hallucinate a brilliant, highly complex 3-level `JOIN` query that technically works perfectly, but would fail standard NLP tests because it didn't "match the answer key".
+**The Paradigm Shift:** Since our model is unconditionally dreaming up queries out of thin air, there is no "ground truth" to compare against. A model might hallucinate a brilliant, highly complex 3-level `JOIN` query that technically works perfectly, but would fail standard NLP tests because it didn't "match the answer key".
 
-We built a custom **Generative Robustness Paradigm** that evaluates execution compiling instead of semantic string matching:
+We built a custom **Generative Robustness Paradigm** that evaluates organic execution compiling:
 
-```mermaid
-sequenceDiagram
-    participant Model
-    participant Evaluator
-    participant RAM_Sandbox
-    
-    Model->>Evaluator: "SELECT T1.col_1 FROM table_0 T1 JOIN..."
-    Evaluator->>RAM_Sandbox: Initialize ephemeral sqlite3 engine
-    Evaluator->>RAM_Sandbox: Force-Push Schema DDL Definitions
-    RAM_Sandbox-->>Evaluator: Database Blueprint Ready
-    Evaluator->>RAM_Sandbox: Execute Hallucinated Query
-    
-    alt Operational Error
-        RAM_Sandbox-->>Evaluator: sqlite3.OperationalError (e.g. no such column)
-        Evaluator-->>Model: Grade: 0 (Failed Compilation)
-    else Successful Compile
-        RAM_Sandbox-->>Evaluator: Empty Vector [ ] or Valid Data Array
-        Evaluator-->>Model: Grade: 1 (Execution Validated)
-    end
-```
+### The Ephemeral Test Protocol
 
-### The Test Protocol
-1.  **Ephemeral Sandboxing:** A clean `sqlite3` database engine is spawned entirely in your system RAM.
-2.  **State Injection:** The exact structure of the database (DDL blueprints) is forcefully executed into the sandbox.
-3.  **The Compilation Trial:** The model's hallucinated query is piped through the SQLite instance. 
-4.  **Grading Logistics:** If it crashes (e.g., hallucinated columns, fractured syntax string, illegal grouping semantics), the model organically fails. If the query safely executes and returns data (even an empty array, since there are no rows yet), the syntax and structural joins are proven completely viable. **Pass.**
+1.  **RAM Sandboxing:** For every hallucinated query, `evaluate_qwen.py` spawns a clean `sqlite3` database engine entirely inside system RAM.
+2.  **State Injection:** The serialized DDL blueprints (from our schema generation logic) are forcefully executed into the sandbox to instantiate the table constraints.
+3.  **The Generation Phase:** The model utilizes autoregressive causal decoding to generate multiple queries down its sampling beam (`temperature=0.8`, `top_p=0.95`, `do_sample=True`). 
+4.  **Token Stripping:** The code dynamically searches for the exact separator `\n-- SQL QUERY --\n` to slice the prompt tokens off and isolates the raw SQL string.
+5.  **The Compilation Trial:** The raw SQL query is piped through the SQLite instance.
+    *   **Fail Condition (0):** If it crashes (e.g., hallucinated columns, `sqlite3.OperationalError`, fractured syntax strings, illegal grouping semantics), the model organically fails.
+    *   **Pass Condition (1):** If the query safely compiles and executes—returning a dataset or even an empty array (since there are no data rows yet)—the AST syntax and structural graph joins are proven mathematically viable. 
 
 ### Advanced Structural Metrics
-To prevent the model from spamming trivial `SELECT *` queries:
-*   **Temperature Sampling:** We generate queries with `temperature=0.8` and `top_p=0.95` for high variance.
-*   **Diversity & Uniqueness Scoring:** `evaluate_qwen.py` dynamically penalizes duplicate structural outputs and evaluates the presence of over 19 Relational Algebra constructs (`JOIN`, `GROUP BY`, `INTERSECT`, `HAVING`, etc.) to verify grammatical mastery.
+
+To prevent the model from cheating the compilation protocol by spamming identically cheap `SELECT * FROM table_1` queries, the evaluator tracks advanced structural physics:
+*   **Diversity Scoring:** The engine indexes over 19 distinct Relational Algebra commands (`MIN`, `MAX`, `INTERSECT`, `UNION`, `LIMIT`, `HAVING`, etc.). It computes the exact fractional coverage of the total syntax dictionary the model exercises per schema.
+*   **Uniqueness Rate:** Calculates a mathematical collision score on deduplicated vs. total queries generated down the beam to ensure highly variance structural synthesis.
 
 ---
 
 ### 💡 The End Result
-By architecting a synergy between strict topological truncation, aggressive semantic name-masking ablations, Causal LoRA fine-tuning, and rigorous compile-time execution scoring, we bridge the gap between static semantic parsers and highly dynamic, fully autonomous database intelligence systems.
+By architecting a seamless pipeline merging strict topological truncation, aggressive 40% semantic name-masking ablations, Causal sequence loss-masking (`-100`), single-epoch LoRA adaptation, and rigorous compile-time execution sandboxing, we successfully transformed an ordinary NLP translation system into a fully autonomous, highly dynamic relational database intelligence.
