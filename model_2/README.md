@@ -116,8 +116,6 @@ Evaluated on **40 unseen schemas** from the Spider test set (verified zero overl
 | **Fine-tuned (LoRA)** | **90.5% (362/400)** | **45.9%** | **96.8%** |
 | **Improvement** | **+25.0%** | **+19.5%** | **+5.1%** |
 
-The prior CodeT5-base prototype achieved 55.9% validity. The migration to Qwen2.5-Coder represents a **+34.6% absolute improvement**.
-
 ---
 
 ## File Structure
@@ -128,13 +126,7 @@ model_2/
 ├── train_qwen.py          # LoRA fine-tuning of Qwen2.5-Coder-1.5B
 ├── evaluate_qwen.py       # Generative robustness evaluation (validity, diversity, uniqueness)
 ├── inference_qwen.py      # Interactive inference with retry-based compilation validation
-├── dataset.py             # PyTorch Dataset class (used by CodeT5 baseline)
-├── train.py               # CodeT5 baseline training script
-├── evaluate.py            # CodeT5 baseline evaluation script
-├── inference.py           # CodeT5 baseline inference script
-├── pipeline.py            # End-to-end Model1→Model2 pipeline connector
 ├── config.yaml            # Configuration (paths, hyperparameters)
 ├── requirements.txt       # Python dependencies
-├── technical_report.md    # Detailed technical report
 └── README.md              # This file
 ```
