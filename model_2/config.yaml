@@ -12,7 +12,7 @@ data:
   train_others: "train_others.json"
   dev: "dev.json"
   tables: "tables.json"
-  test_tables: "test_tables.json"
+  test_tables: "test_tables_unseen.json"
   database_dir: "database"
   test_database_dir: "test_database"
   processed_dir: "processed_data"
