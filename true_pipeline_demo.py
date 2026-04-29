@@ -115,10 +115,14 @@ def main():
 
     # STEP 1
     step_header(1, "Natural Language Input (Business Requirement)")
-    business_requirement = "A blog platform where users write posts. Users have an ID and a unique username. Posts have an ID, a title, and a text body."
-    print("Auto-supplying test requirement:")
-    slow_print(f'Input: "{business_requirement}"')
-    nl_input = business_requirement
+    print("Welcome! Please describe the database you want to build in Natural Language.")
+    print("(Example: 'I need an e-commerce database to track users, their emails, and the orders they place.')\n")
+    
+    nl_input = input("Your Description > ")
+    
+    if not nl_input.strip():
+        nl_input = "A blog platform where users write posts. Users have an ID and a unique username. Posts have an ID, a title, and a text body."
+        print(f"\n[No input detected. Using default description: '{nl_input}']")
         
     # STEP 2
     step_header(2, "Phase 1: Text-to-DDL (Parth's Qwen Model)")
