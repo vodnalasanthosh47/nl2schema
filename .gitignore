@@ -10,3 +10,5 @@ data/schemapile/generated/
 *.json.gz
 *.json
 *.csv
+
+schema_model/qlora-nl2sql-adapter2/
