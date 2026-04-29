@@ -1,0 +1,14 @@
+==== RESULTS ==== QLORA
+Valid references   : 81
+Evaluated          : 81
+Parse rate         : 96.30%
+Execution rate     : 71.60%
+Schema match rate  : 96.30%
+
+
+==== RESULTS ==== BASE
+Valid references   : 81
+Evaluated          : 81
+Parse rate         : 100.00%
+Execution rate     : 62.96%
+Schema match rate  : 100.00%
