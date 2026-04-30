@@ -4,6 +4,35 @@ A compound AI system that transforms natural language business requirements into
 
 ## 🏗️ Architecture Overview
 
+```mermaid
+graph TD
+    %% Styling
+    classDef input fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0f172a
+    classDef model fill:#fef08a,stroke:#ca8a04,stroke-width:2px,color:#422006
+    classDef process fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#3b0764
+    classDef output fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+
+    %% Phase 1
+    subgraph Phase 1 [Phase 1: Natural Language to Schema DDL]
+        NL[User Natural Language Description]:::input
+        M1[Parth's Model<br/>Qwen2.5-Coder-1.5B + LoRA]:::model
+        DDL[Normalized DDL Schema<br/>CREATE TABLE ...]:::output
+        NL --> M1
+        M1 --> DDL
+    end
+
+    %% Phase 2
+    subgraph Phase 2 [Phase 2: Schema to SQL Queries]
+        M2[Schema-to-SQL Model<br/>Qwen2.5-Coder-1.5B + LoRA]:::model
+        EVAL[Ephemeral Execution<br/>SQLite Compilation Check]:::process
+        SQL[Top 5 Diverse Valid<br/>SQL Queries]:::output
+        
+        DDL --> M2
+        M2 -- Generates Diverse Samples --> EVAL
+        EVAL -- Filters Invalid Syntax --> SQL
+    end
+```
+
 The system is built as a **two-phase pipeline** using two fine-tuned LLMs working in sequence. By decoupling schema design from query synthesis, we achieve highly accurate and structurally sound SQL outputs without hallucinating non-existent columns.
 
 ### Phase 1: Natural Language → DDL (Schema Design)
