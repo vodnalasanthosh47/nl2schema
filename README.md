@@ -79,6 +79,28 @@ Instead, we employ an **Ephemeral Execution Framework**:
 
 ---
 
+## 🧮 Mathematical Foundations
+
+The Phase 2 model operations are strictly governed by the following equations:
+
+**1. LoRA (Low-Rank Adaptation)**
+Reduces trainable parameters by freezing the base weight matrix ($W_0$) and optimizing two low-rank matrices ($A$ and $B$).
+$$h = W_0 x + \frac{\alpha}{r} (B A) x$$
+
+**2. Scaled Dot-Product Self-Attention**
+The core mechanism allowing the model to map generated SQL tokens back to the DDL schema to establish Foreign Key relationships.
+$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right)V$$
+
+**3. Autoregressive Cross-Entropy Loss (with Masking)**
+The model's training objective. The masking term ($m_t$) is set to 0 for the DDL prompt (labels = `-100`) and 1 for the SQL output, ensuring the model is only penalized for SQL generation errors.
+$$\mathcal{L} = - \sum_{t=1}^{N} m_t \log P(x_t \mid x_{<t})$$
+
+**4. Softmax with Temperature Scaling**
+Used during Ephemeral Execution to flatten the probability curve ($T=0.8$), forcing the model to explore alternate token branches and synthesize structurally diverse SQL constructs.
+$$P(x_i) = \frac{\exp(z_i / T)}{\sum_j \exp(z_j / T)}$$
+
+---
+
 ## 💻 Running the Demo
 
 To run the interactive End-to-End Live Pipeline:
